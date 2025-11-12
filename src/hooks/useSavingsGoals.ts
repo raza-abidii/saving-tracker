@@ -1,36 +1,45 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase, type SavingsGoal } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
-// Convert database format to app format
-const dbToApp = (dbGoal: SavingsGoal) => ({
-  id: dbGoal.id,
-  productName: dbGoal.product_name,
-  targetPrice: dbGoal.target_price,
-  weeklySavings: dbGoal.weekly_savings,
-  currentSavings: dbGoal.current_savings,
-});
+const STORAGE_KEY = 'savingsGoals';
 
-// Convert app format to database format
-const appToDb = (appGoal: any) => ({
-  product_name: appGoal.productName,
-  target_price: appGoal.targetPrice,
-  weekly_savings: appGoal.weeklySavings,
-  current_savings: appGoal.currentSavings,
-});
+interface SavingsGoal {
+  id: string;
+  productName: string;
+  targetPrice: number;
+  weeklySavings: number;
+  currentSavings: number;
+  createdAt: string;
+}
+
+// Get goals from localStorage
+const getGoalsFromStorage = (): SavingsGoal[] => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error reading from localStorage:', error);
+    return [];
+  }
+};
+
+// Save goals to localStorage
+const saveGoalsToStorage = (goals: SavingsGoal[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
+  } catch (error) {
+    console.error('Error saving to localStorage:', error);
+  }
+};
 
 // Fetch all savings goals
 export const useSavingsGoals = () => {
   return useQuery({
     queryKey: ['savingsGoals'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('savings_goals')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data.map(dbToApp);
+      // Simulate async operation
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return getGoalsFromStorage();
     },
   });
 };
@@ -41,15 +50,20 @@ export const useAddSavingsGoal = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (goal: Omit<any, 'id'>) => {
-      const { data, error } = await supabase
-        .from('savings_goals')
-        .insert([appToDb(goal)])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return dbToApp(data);
+    mutationFn: async (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const goals = getGoalsFromStorage();
+      const newGoal: SavingsGoal = {
+        ...goal,
+        id: Date.now().toString(),
+        createdAt: new Date().toISOString(),
+      };
+      
+      const updatedGoals = [newGoal, ...goals];
+      saveGoalsToStorage(updatedGoals);
+      
+      return newGoal;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['savingsGoals'] });
@@ -75,15 +89,19 @@ export const useUpdateSavingsGoal = () => {
 
   return useMutation({
     mutationFn: async ({ id, currentSavings }: { id: string; currentSavings: number }) => {
-      const { data, error } = await supabase
-        .from('savings_goals')
-        .update({ current_savings: currentSavings, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return dbToApp(data);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const goals = getGoalsFromStorage();
+      const goalIndex = goals.findIndex(g => g.id === id);
+      
+      if (goalIndex === -1) {
+        throw new Error('Goal not found');
+      }
+      
+      goals[goalIndex].currentSavings = currentSavings;
+      saveGoalsToStorage(goals);
+      
+      return goals[goalIndex];
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['savingsGoals'] });
@@ -117,12 +135,12 @@ export const useDeleteSavingsGoal = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('savings_goals')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const goals = getGoalsFromStorage();
+      const filteredGoals = goals.filter(g => g.id !== id);
+      saveGoalsToStorage(filteredGoals);
+      
       return id;
     },
     onSuccess: () => {
